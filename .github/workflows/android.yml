@@ -24,6 +24,18 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
+      - name: Configure Firebase (optional)
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        shell: bash
+        run: |
+          if [[ -n "$GOOGLE_SERVICES_JSON" ]]; then
+            printf '%s' "$GOOGLE_SERVICES_JSON" > app/google-services.json
+            python3 -m json.tool app/google-services.json > /dev/null
+            echo "Firebase config loaded for this build."
+          else
+            echo "GOOGLE_SERVICES_JSON is not set; building local-only APK."
+          fi
       - name: Install Android platform
         shell: bash
         run: |

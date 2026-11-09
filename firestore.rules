@@ -1,0 +1,76 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isMember(groupId) {
+      return signedIn()
+        && request.auth.uid in get(/databases/$(database)/documents/groups/$(groupId)).data.memberIds;
+    }
+
+    match /groups/{groupId} {
+      // The invite code is the document ID. A person who knows the code can
+      // read only this small group metadata document in order to join.
+      allow get: if signedIn()
+        && (!exists(/databases/$(database)/documents/groups/$(groupId))
+          || isMember(groupId)
+          || resource.data.inviteCode == groupId);
+      allow list: if false;
+
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['inviteCode', 'memberIds', 'createdBy', 'createdAt'])
+        && request.resource.data.inviteCode == groupId
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.memberIds == [request.auth.uid];
+
+      // A non-member may add only their own UID using the exact invite code.
+      // Existing members cannot silently add other users or remove members.
+      allow update: if signedIn()
+        && resource.data.inviteCode == groupId
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberIds'])
+        && request.resource.data.memberIds.size() == resource.data.memberIds.size() + 1
+        && request.resource.data.memberIds.size() <= 10
+        && request.resource.data.memberIds.hasAll(resource.data.memberIds)
+        && request.auth.uid in request.resource.data.memberIds
+        && !(request.auth.uid in resource.data.memberIds);
+      allow delete: if false;
+
+      match /players/{playerId} {
+        allow read: if isMember(groupId);
+        allow create: if isMember(groupId)
+          && request.resource.data.keys().hasOnly(['name', 'createdBy', 'createdAt'])
+          && request.resource.data.name is string
+          && request.resource.data.name.size() > 0
+          && request.resource.data.name.size() <= 60
+          && request.resource.data.createdBy == request.auth.uid;
+        allow update: if isMember(groupId)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name'])
+          && request.resource.data.name is string
+          && request.resource.data.name.size() > 0
+          && request.resource.data.name.size() <= 60;
+        allow delete: if isMember(groupId);
+      }
+
+      match /matches/{matchId} {
+        allow read: if isMember(groupId);
+        allow create: if isMember(groupId)
+          && request.resource.data.keys().hasOnly([
+            'teamA', 'teamB', 'scoreA', 'scoreB', 'createdBy', 'createdAt'
+          ])
+          && request.resource.data.teamA is list
+          && request.resource.data.teamB is list
+          && request.resource.data.teamA.size() == 2
+          && request.resource.data.teamB.size() == 2
+          && request.resource.data.scoreA is int
+          && request.resource.data.scoreB is int
+          && request.resource.data.scoreA >= 0
+          && request.resource.data.scoreB >= 0
+          && request.resource.data.createdBy == request.auth.uid;
+        allow update, delete: if isMember(groupId);
+      }
+    }
+  }
+}

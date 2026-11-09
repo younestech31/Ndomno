@@ -4,18 +4,23 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class ScoringTest {
-    @Test fun winningTeamScoresOpponentsRemainingPips() {
-        val teamAPips = 3 + 5
-        val teamBPips = 4 + 6
-        val teamAScore = teamBPips
-        assertEquals(10, teamAScore)
+    @Test
+    fun teamAWinsAndScoresTeamBsRemainingPips() {
+        assertEquals(10 to 0, calculateRoundScore(teamAPips = 8, teamBPips = 10, winner = 1))
     }
 
-    @Test fun losingTeamReceivesNoPointsForNormalRound() {
-        val winner = 1
-        val pointsForA = if (winner == 1) 12 else 0
-        val pointsForB = if (winner == 2) 8 else 0
-        assertEquals(12, pointsForA)
-        assertEquals(0, pointsForB)
+    @Test
+    fun teamBWinsAndScoresTeamAsRemainingPips() {
+        assertEquals(0 to 8, calculateRoundScore(teamAPips = 8, teamBPips = 10, winner = 2))
+    }
+
+    @Test
+    fun noWinnerProducesNoPoints() {
+        assertEquals(0 to 0, calculateRoundScore(teamAPips = 8, teamBPips = 10, winner = 0))
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun negativePipsAreRejected() {
+        calculateRoundScore(teamAPips = -1, teamBPips = 10, winner = 1)
     }
 }

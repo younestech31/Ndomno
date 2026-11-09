@@ -1,0 +1,9 @@
+# Local Firebase project configuration
+app/google-services.json
+
+# Android / Gradle
+.gradle/
+**/build/
+local.properties
+*.iml
+.idea/
