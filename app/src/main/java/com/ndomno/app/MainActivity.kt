@@ -94,11 +94,12 @@ private fun NdomnoApp() {
                         Button(onClick = {
                             if (teamA.size == 2 && teamB.size == 2 && winner != 0 &&
                                 listOf(pipsA1, pipsA2, pipsB1, pipsB2).all { (it.toIntOrNull() ?: -1) >= 0 }) {
-                                val old = matches.lastOrNull()?.takeIf { it.teamA == teamA && it.teamB == teamB }
-                                val a = (old?.scoreA ?: 0) + if (winner == 1) roundPoints else 0
-                                val b = (old?.scoreB ?: 0) + if (winner == 2) roundPoints else 0
+                                val a = if (winner == 1) roundPoints else 0
+                                val b = if (winner == 2) roundPoints else 0
                                 matches.add(PlayedMatch(teamA.toList(), teamB.toList(), a, b))
-                                message = "Round saved. Match score: $a – $b"
+                                val totalA = matches.filter { it.teamA == teamA && it.teamB == teamB }.sumOf { it.scoreA }
+                                val totalB = matches.filter { it.teamA == teamA && it.teamB == teamB }.sumOf { it.scoreB }
+                                message = "Round saved. Pairing total: $totalA – $totalB"
                             } else message = "Choose two players per team, a winner, and valid pip counts."
                         }, modifier = Modifier.fillMaxWidth()) { Text("Save round") }
                         message?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
