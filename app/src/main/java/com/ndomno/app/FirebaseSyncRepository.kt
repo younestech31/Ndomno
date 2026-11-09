@@ -3,11 +3,13 @@ package com.ndomno.app
 import android.content.Context
 import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.Timestamp
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
 import kotlinx.coroutines.tasks.await
 import java.security.SecureRandom
+import java.util.Date
 import java.util.UUID
 
 data class SyncedPlayer(
@@ -126,7 +128,8 @@ class FirebaseSyncRepository(context: Context) {
                 "scoreA" to match.scoreA,
                 "scoreB" to match.scoreB,
                 "createdBy" to uid,
-                "createdAt" to FieldValue.serverTimestamp()
+                // Preserve the original local round time rather than resetting history to import time.
+                "createdAt" to Timestamp(Date(match.date))
             )
         }
 
