@@ -135,6 +135,35 @@ private fun NdomnoApp() {
                     teamBIds = idsB
                 )
             }
+
+            // Upgrade pre-ID cloud rounds once, preserving their scores, order and names.
+            if (syncRepository != null) {
+                remoteMatches.filter {
+                    it.teamAIds.size != 2 || it.teamBIds.size != 2
+                }.forEach { legacy ->
+                    val migrated = syncedMatches.firstOrNull { it.id == legacy.id }
+                    if (migrated != null) {
+                        scope.launch {
+                            runCatching {
+                                syncRepository.updateMatch(
+                                    groupCode,
+                                    migrated.id,
+                                    migrated.teamA,
+                                    migrated.teamB,
+                                    migrated.teamAIds,
+                                    migrated.teamBIds,
+                                    migrated.scoreA,
+                                    migrated.scoreB
+                                )
+                            }.onFailure {
+                                syncMessage = "Old round kept locally; cloud ID migration pending: " +
+                                    (it.localizedMessage ?: "Unknown error")
+                            }
+                        }
+                    }
+                }
+            }
+
             players.clear()
             players.addAll(syncedPlayers)
             matches.clear()
