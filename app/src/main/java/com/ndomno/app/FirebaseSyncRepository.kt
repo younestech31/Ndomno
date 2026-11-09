@@ -3,11 +3,13 @@ package com.ndomno.app
 import android.content.Context
 import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.Timestamp
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
 import kotlinx.coroutines.tasks.await
 import java.security.SecureRandom
+import java.util.Date
 import java.util.UUID
 
 data class SyncedPlayer(
@@ -86,6 +88,57 @@ class FirebaseSyncRepository(context: Context) {
             group.update("memberIds", FieldValue.arrayUnion(uid)).await()
         }
         return code
+    }
+
+    /**
+     * Imports a phone's existing data in bounded batches before live listeners are
+     * enabled. Repeated calls are safe because stable document IDs are reused.
+     */
+    suspend fun uploadInitialData(
+        groupCode: String,
+        players: List<Player>,
+        matches: List<PlayedMatch>
+    ) {
+        val uid = ensureSignedIn()
+        val group = db.collection("groups").document(groupCode)
+        val writes = mutableListOf<Pair<com.google.firebase.firestore.DocumentReference, Map<String, Any>>>()
+
+        players.forEach { player ->
+            val name = player.name.trim()
+            require(name.isNotEmpty() && name.length <= 60) {
+                "Player names must contain between 1 and 60 characters."
+            }
+            writes += group.collection("players").document(player.id) to mapOf(
+                "name" to name,
+                "createdBy" to uid,
+                "createdAt" to FieldValue.serverTimestamp()
+            )
+        }
+
+        matches.forEach { match ->
+            validateMatch(match.teamAIds, match.teamBIds, match.scoreA, match.scoreB)
+            require(match.teamA.size == 2 && match.teamB.size == 2) {
+                "Each team must have two player names."
+            }
+            writes += group.collection("matches").document(match.id) to mapOf(
+                "teamA" to match.teamA,
+                "teamB" to match.teamB,
+                "teamAIds" to match.teamAIds,
+                "teamBIds" to match.teamBIds,
+                "scoreA" to match.scoreA,
+                "scoreB" to match.scoreB,
+                "createdBy" to uid,
+                // Preserve the original local round time rather than resetting history to import time.
+                "createdAt" to Timestamp(Date(match.date))
+            )
+        }
+
+        // Firestore permits at most 500 writes per batch; leave headroom.
+        writes.chunked(400).forEach { chunk ->
+            val batch = db.batch()
+            chunk.forEach { (document, data) -> batch.set(document, data) }
+            batch.commit().await()
+        }
     }
 
     fun listenPlayers(
@@ -250,8 +303,9 @@ class FirebaseSyncRepository(context: Context) {
     ) {
         require(
             teamAIds.size == 2 && teamBIds.size == 2 &&
+                teamAIds.toSet().size == 2 && teamBIds.toSet().size == 2 &&
                 teamAIds.toSet().intersect(teamBIds.toSet()).isEmpty()
-        ) { "A match requires two different players on each team." }
+        ) { "A match requires four different players split into two teams." }
         require(scoreA >= 0 && scoreB >= 0) { "Scores cannot be negative." }
     }
 
