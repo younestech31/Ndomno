@@ -305,7 +305,7 @@ private fun NdomnoApp() {
                                             teamA = namesA,
                                             teamB = namesB,
                                             scoreA = calculatedScore!!.first,
-                                            scoreB = calculatedScore.second,
+                                            scoreB = calculatedScore!!.second,
                                             id = UUID.randomUUID().toString(),
                                             teamAIds = teamAIds.toList(),
                                             teamBIds = teamBIds.toList()
