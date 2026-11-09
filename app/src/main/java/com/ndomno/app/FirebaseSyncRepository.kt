@@ -82,8 +82,10 @@ class FirebaseSyncRepository(context: Context) {
             "That invite code was not found."
         }
         val members = snapshot.get("memberIds") as? List<*> ?: emptyList<Any>()
-        require(uid in members || members.size < 10) { "This group is full." }
-        group.update("memberIds", FieldValue.arrayUnion(uid)).await()
+        if (uid !in members) {
+            require(members.size < 10) { "This group is full." }
+            group.update("memberIds", FieldValue.arrayUnion(uid)).await()
+        }
         return code
     }
 
