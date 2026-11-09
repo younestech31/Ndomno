@@ -103,8 +103,8 @@ private fun NdomnoApp() {
                             FilterChip(selected = winner == 2, onClick = { winner = 2 }, label = { Text("Team B won") })
                         }
                         val calculatedScore = calculateRoundScore(
-                            (pipsA1.toIntOrNull() ?: 0) + (pipsA2.toIntOrNull() ?: 0),
-                            (pipsB1.toIntOrNull() ?: 0) + (pipsB2.toIntOrNull() ?: 0),
+                            (pipsA1.toIntOrNull() ?: 0).coerceAtLeast(0) + (pipsA2.toIntOrNull() ?: 0).coerceAtLeast(0),
+                            (pipsB1.toIntOrNull() ?: 0).coerceAtLeast(0) + (pipsB2.toIntOrNull() ?: 0).coerceAtLeast(0),
                             winner
                         )
                         val roundPoints = if (winner == 1) calculatedScore.first else calculatedScore.second
