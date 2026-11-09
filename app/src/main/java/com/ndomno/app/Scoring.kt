@@ -26,7 +26,8 @@ fun calculateRoundScoreFromEntries(
     if (teamAPips.size != 2 || teamBPips.size != 2) return null
 
     val values = (teamAPips + teamBPips).map { it.toLongOrNull() ?: return null }
-    if (values.any { it < 0L }) return null
+    // Bound each entry before addition so even Long.MAX_VALUE input cannot overflow.
+    if (values.any { it < 0L || it > Int.MAX_VALUE.toLong() }) return null
 
     val totalA = values[0] + values[1]
     val totalB = values[2] + values[3]
