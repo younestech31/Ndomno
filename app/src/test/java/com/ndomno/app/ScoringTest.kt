@@ -49,4 +49,16 @@ class ScoringTest {
             )
         )
     }
+    @Test
+    fun entryScoringRejectsLongOverflowInputs() {
+        assertEquals(
+            null,
+            calculateRoundScoreFromEntries(
+                listOf("9223372036854775807", "1"),
+                listOf("0", "0"),
+                winner = 1
+            )
+        )
+    }
+
 }
