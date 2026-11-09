@@ -15,6 +15,8 @@ Native Android scorekeeper for regular **2-vs-2 domino games**.
 - Live player and game-history updates through Cloud Firestore.
 - Player renames/deletions and round corrections/deletions are synchronized across group members.
 - Firestore's Android offline cache queues supported writes while disconnected and syncs when connectivity returns.
+- Initial group setup uploads the existing local player list and match history in bounded batches before live listeners are enabled; an interrupted upload can be retried without replacing the local copy.
+- The New Game and Rankings screens support vertical scrolling, and invalid or overflowing pip entries are rejected before scoring.
 
 ## Firebase setup (free Spark plan)
 
