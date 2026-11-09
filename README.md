@@ -8,8 +8,12 @@ Native Android scorekeeper for regular **2-vs-2 domino games**.
 - Standard round scoring: the winning team receives the combined remaining pips of the opposing team.
 - Individual and partnership rankings, plus match history.
 - Local persistence between app launches.
+- Stable player IDs keep past results linked even after player names change.
+- Edit or delete players; previous round history and rankings are preserved when a player is removed.
+- Correct or delete saved rounds; individual and partnership rankings recalculate from the saved records.
 - Optional shared groups: create a private 10-character invite code and join from another phone.
 - Live player and game-history updates through Cloud Firestore.
+- Player renames/deletions and round corrections/deletions are synchronized across group members.
 - Firestore's Android offline cache queues supported writes while disconnected and syncs when connectivity returns.
 
 ## Firebase setup (free Spark plan)
