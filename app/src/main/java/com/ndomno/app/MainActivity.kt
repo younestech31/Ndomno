@@ -1338,6 +1338,15 @@ private fun RoundHistoryCard(
 private fun NumberField(
     label: String,
     value: String,
+    onValue: (String) -> Unit
+) {
+    NumberField(label, value, onValue, Modifier)
+}
+
+@Composable
+private fun NumberField(
+    label: String,
+    value: String,
     onValue: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
