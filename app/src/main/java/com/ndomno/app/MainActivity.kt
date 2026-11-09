@@ -1,5 +1,6 @@
 package com.ndomno.app
 
+import android.content.Context
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -9,6 +10,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.platform.LocalContext
+import kotlinx.coroutines.launch
+import org.json.JSONArray
+import org.json.JSONObject
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -27,8 +32,18 @@ class MainActivity : ComponentActivity() {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun NdomnoApp() {
-    val players = remember { mutableStateListOf<Player>() }
-    val matches = remember { mutableStateListOf<PlayedMatch>() }
+    val context = LocalContext.current
+    val preferences = remember { context.getSharedPreferences("ndomno_data", Context.MODE_PRIVATE) }
+    val players = remember {
+        mutableStateListOf<Player>().apply { addAll(loadPlayers(preferences)) }
+    }
+    val matches = remember {
+        mutableStateListOf<PlayedMatch>().apply { addAll(loadMatches(preferences)) }
+    }
+    LaunchedEffect(players.toList(), matches.toList()) {
+        savePlayers(preferences, players)
+        saveMatches(preferences, matches)
+    }
     var newName by remember { mutableStateOf("") }
     var selectedTab by remember { mutableIntStateOf(0) }
     var teamA by remember { mutableStateOf(listOf<String>()) }
@@ -154,4 +169,48 @@ private fun NdomnoApp() {
 private fun NumberField(label: String, value: String, onValue: (String) -> Unit) {
     OutlinedTextField(value, onValue, label = { Text(label) }, modifier = Modifier.fillMaxWidth(),
         singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+}
+
+
+private fun loadPlayers(preferences: android.content.SharedPreferences): List<Player> = runCatching {
+    val json = JSONArray(preferences.getString("players", "[]"))
+    (0 until json.length()).map { index ->
+        val item = json.getJSONObject(index)
+        Player(item.getInt("id"), item.getString("name"))
+    }
+}.getOrDefault(emptyList())
+
+private fun savePlayers(preferences: android.content.SharedPreferences, players: List<Player>) {
+    val json = JSONArray()
+    players.forEach { player ->
+        json.put(JSONObject().put("id", player.id).put("name", player.name))
+    }
+    preferences.edit().putString("players", json.toString()).apply()
+}
+
+private fun loadMatches(preferences: android.content.SharedPreferences): List<PlayedMatch> = runCatching {
+    val json = JSONArray(preferences.getString("matches", "[]"))
+    (0 until json.length()).map { index ->
+        val item = json.getJSONObject(index)
+        val teamAJson = item.getJSONArray("teamA")
+        val teamBJson = item.getJSONArray("teamB")
+        val teamA = (0 until teamAJson.length()).map { teamAJson.getString(it) }
+        val teamB = (0 until teamBJson.length()).map { teamBJson.getString(it) }
+        PlayedMatch(teamA, teamB, item.getInt("scoreA"), item.getInt("scoreB"), item.optLong("date"))
+    }
+}.getOrDefault(emptyList())
+
+private fun saveMatches(preferences: android.content.SharedPreferences, matches: List<PlayedMatch>) {
+    val json = JSONArray()
+    matches.forEach { match ->
+        val teamA = JSONArray().apply { match.teamA.forEach(::put) }
+        val teamB = JSONArray().apply { match.teamB.forEach(::put) }
+        json.put(JSONObject()
+            .put("teamA", teamA)
+            .put("teamB", teamB)
+            .put("scoreA", match.scoreA)
+            .put("scoreB", match.scoreB)
+            .put("date", match.date))
+    }
+    preferences.edit().putString("matches", json.toString()).apply()
 }
