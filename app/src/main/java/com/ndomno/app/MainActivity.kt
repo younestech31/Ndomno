@@ -5,6 +5,8 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
@@ -39,6 +41,7 @@ private fun NdomnoApp() {
         } else null
     }
     val scope = rememberCoroutineScope()
+    val mainScrollState = rememberScrollState()
 
     val players = remember {
         mutableStateListOf<Player>().apply {
@@ -52,6 +55,7 @@ private fun NdomnoApp() {
     }
 
     var groupCode by remember { mutableStateOf(preferences.getString("group_code", "").orEmpty()) }
+    var pendingGroupCode by remember { mutableStateOf(preferences.getString("pending_group_code", "").orEmpty()) }
     var showSyncDialog by remember { mutableStateOf(false) }
     var inviteCodeInput by remember { mutableStateOf("") }
     var syncMessage by remember { mutableStateOf<String?>(null) }
@@ -196,7 +200,10 @@ private fun NdomnoApp() {
                 )
             }
         ) { padding ->
-            Column(Modifier.fillMaxSize().padding(padding).padding(16.dp)) {
+            Column(
+                Modifier.fillMaxSize().padding(padding).padding(16.dp)
+                    .then(if (selectedTab == 0 || selectedTab == 2) Modifier.verticalScroll(mainScrollState) else Modifier)
+            ) {
                 TabRow(selectedTabIndex = selectedTab) {
                     listOf("New game", "Players", "Rankings", "History").forEachIndexed { index, label ->
                         Tab(
@@ -273,18 +280,15 @@ private fun NdomnoApp() {
                             )
                         }
 
-                        val parsedPips = listOf(pipsA1, pipsA2, pipsB1, pipsB2).map { it.toIntOrNull() }
-                        val validPips = parsedPips.all { it != null && it >= 0 }
-                        val calculatedScore = if (validPips) {
-                            calculateRoundScore(
-                                parsedPips[0]!! + parsedPips[1]!!,
-                                parsedPips[2]!! + parsedPips[3]!!,
-                                winner
-                            )
-                        } else {
-                            0 to 0
-                        }
-                        val roundPoints = if (winner == 1) calculatedScore.first else calculatedScore.second
+                        val calculatedScore = calculateRoundScoreFromEntries(
+                            teamAPips = listOf(pipsA1, pipsA2),
+                            teamBPips = listOf(pipsB1, pipsB2),
+                            winner = winner
+                        )
+                        val validPips = calculatedScore != null
+                        val roundPoints = calculatedScore?.let {
+                            if (winner == 1) it.first else it.second
+                        } ?: 0
                         Text("Round points: " + roundPoints)
 
                         Button(
@@ -292,7 +296,7 @@ private fun NdomnoApp() {
                                 if (
                                     teamAIds.size == 2 && teamBIds.size == 2 &&
                                     teamAIds.toSet().intersect(teamBIds.toSet()).isEmpty() &&
-                                    winner != 0 && validPips
+                                    winner != 0 && calculatedScore != null
                                 ) {
                                     val namesA = teamAIds.mapNotNull { id -> players.firstOrNull { it.id == id }?.name }
                                     val namesB = teamBIds.mapNotNull { id -> players.firstOrNull { it.id == id }?.name }
@@ -300,7 +304,7 @@ private fun NdomnoApp() {
                                         val savedMatch = PlayedMatch(
                                             teamA = namesA,
                                             teamB = namesB,
-                                            scoreA = calculatedScore.first,
+                                            scoreA = calculatedScore!!.first,
                                             scoreB = calculatedScore.second,
                                             id = UUID.randomUUID().toString(),
                                             teamAIds = teamAIds.toList(),
@@ -522,7 +526,14 @@ private fun NdomnoApp() {
                         Text("Give this code to your friend. They can enter it on their phone to join.")
                         Text("Players, round corrections and deletions sync through this shared group.")
                     } else {
-                        Text("Create a group on the phone that has your existing players and game history. Your friend can then join with the code.")
+                        if (pendingGroupCode.isNotBlank()) {
+                            Text("A group was created, but its initial data upload is not complete.")
+                            Text("Pending group code:", style = MaterialTheme.typography.bodyMedium)
+                            Text(pendingGroupCode, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+                            Text("Your local data is still safe. Retry the upload before sharing this code.")
+                        } else {
+                            Text("Create a group on the phone that has your existing players and game history. Your friend can then join with the code.")
+                        }
                         OutlinedTextField(
                             value = inviteCodeInput,
                             onValueChange = {
@@ -543,46 +554,42 @@ private fun NdomnoApp() {
                                 scope.launch {
                                     val existingPlayers = players.toList()
                                     val existingMatches = matches.toList()
-                                    runCatching { syncRepository.createGroup() }
-                                        .onSuccess { code ->
-                                            preferences.edit().putString("group_code", code).apply()
-                                            groupCode = code
-                                            var failures = 0
-                                            existingPlayers.forEach { player ->
-                                                runCatching {
-                                                    syncRepository.addPlayer(code, player.name, player.id)
-                                                }.onFailure { failures++ }
-                                            }
-                                            existingMatches.forEach { match ->
-                                                runCatching {
-                                                    syncRepository.saveMatch(
-                                                        code,
-                                                        match.teamA,
-                                                        match.teamB,
-                                                        match.teamAIds,
-                                                        match.teamBIds,
-                                                        match.scoreA,
-                                                        match.scoreB,
-                                                        match.id
-                                                    )
-                                                }.onFailure { failures++ }
-                                            }
-                                            syncMessage = if (failures == 0) {
-                                                "Group created and existing data uploaded. Share the code with your friend."
-                                            } else {
-                                                "Group created, but " + failures +
-                                                    " records did not upload. Check the sync error and try again."
+                                    syncMessage = null
+                                    runCatching {
+                                        val code = pendingGroupCode.ifBlank {
+                                            syncRepository.createGroup().also { createdCode ->
+                                                pendingGroupCode = createdCode
+                                                preferences.edit()
+                                                    .putString("pending_group_code", createdCode)
+                                                    .apply()
                                             }
                                         }
-                                        .onFailure {
-                                            syncMessage = it.localizedMessage ?: "Could not create group."
+                                        // Upload the complete local snapshot before enabling listeners.
+                                        // This prevents an initial empty cloud snapshot from erasing local data.
+                                        syncRepository.uploadInitialData(code, existingPlayers, existingMatches)
+                                        code
+                                    }.onSuccess { code ->
+                                        preferences.edit()
+                                            .putString("group_code", code)
+                                            .remove("pending_group_code")
+                                            .apply()
+                                        groupCode = code
+                                        pendingGroupCode = ""
+                                        syncMessage = "Group created and existing data uploaded. Share the code with your friend."
+                                    }.onFailure { error ->
+                                        syncMessage = if (pendingGroupCode.isNotBlank()) {
+                                            "Initial upload failed. Your local data is safe. Retry with code " +
+                                                pendingGroupCode + ". " + (error.localizedMessage ?: "Check your connection.")
+                                        } else {
+                                            error.localizedMessage ?: "Could not create group."
                                         }
+                                    }
                                 }
                             }
-                        ) { Text("Create group") }
+                        ) { Text(if (pendingGroupCode.isBlank()) "Create group" else "Retry upload") }
 
                         TextButton(
-                            enabled = inviteCodeInput.length == 10,
+                            enabled = inviteCodeInput.length == 10 && pendingGroupCode.isBlank(),
                             onClick = {
                                 scope.launch {
                                     runCatching { syncRepository.joinGroup(inviteCodeInput) }
