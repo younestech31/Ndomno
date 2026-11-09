@@ -1,0 +1,47 @@
+name: Android build
+
+on:
+  push:
+    branches: [work/android-v1, main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Install Android platform
+        shell: bash
+        run: |
+          echo "Android SDK: $ANDROID_HOME"
+          # sdkmanager closes stdin after the final prompt; with pipefail this
+          # makes yes report SIGPIPE even though every license was accepted.
+          set +o pipefail
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses
+          set -o pipefail
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0"
+      - name: Run unit tests
+        working-directory: .
+        run: gradle :app:testDebugUnitTest
+      - name: Assemble debug APK
+        run: gradle :app:assembleDebug
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ndomno-debug-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
