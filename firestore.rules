@@ -15,7 +15,9 @@ service cloud.firestore {
       // The invite code is the document ID. A person who knows the code can
       // read only this small group metadata document in order to join.
       allow get: if signedIn()
-        && (isMember(groupId) || resource.data.inviteCode == groupId);
+        && (!exists(/databases/$(database)/documents/groups/$(groupId))
+          || isMember(groupId)
+          || resource.data.inviteCode == groupId);
       allow list: if false;
 
       allow create: if signedIn()
