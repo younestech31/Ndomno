@@ -28,7 +28,11 @@ jobs:
         shell: bash
         run: |
           echo "Android SDK: $ANDROID_HOME"
+          # sdkmanager closes stdin after the final prompt; with pipefail this
+          # makes yes report SIGPIPE even though every license was accepted.
+          set +o pipefail
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses
+          set -o pipefail
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0"
       - name: Run unit tests
         working-directory: .
