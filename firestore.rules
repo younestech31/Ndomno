@@ -11,6 +11,32 @@ service cloud.firestore {
         && request.auth.uid in get(/databases/$(database)/documents/groups/$(groupId)).data.memberIds;
     }
 
+    function validRound(data) {
+      return data.teamA is list
+        && data.teamB is list
+        && data.teamA.size() == 2
+        && data.teamB.size() == 2
+        && data.teamA[0] is string
+        && data.teamA[1] is string
+        && data.teamB[0] is string
+        && data.teamB[1] is string
+        && data.teamAIds is list
+        && data.teamBIds is list
+        && data.teamAIds.size() == 2
+        && data.teamBIds.size() == 2
+        && data.teamAIds.toSet().size() == 2
+        && data.teamBIds.toSet().size() == 2
+        && data.teamAIds.toSet().intersection(data.teamBIds.toSet()).size() == 0
+        && data.teamAIds[0] is string
+        && data.teamAIds[1] is string
+        && data.teamBIds[0] is string
+        && data.teamBIds[1] is string
+        && data.scoreA is int
+        && data.scoreB is int
+        && data.scoreA >= 0
+        && data.scoreB >= 0;
+    }
+
     match /groups/{groupId} {
       // Anyone who knows the invite code may read only the small group metadata
       // document in order to join. The player and match collections stay private.
@@ -60,22 +86,16 @@ service cloud.firestore {
             'teamA', 'teamB', 'teamAIds', 'teamBIds',
             'scoreA', 'scoreB', 'createdBy', 'createdAt'
           ])
-          && request.resource.data.teamA is list
-          && request.resource.data.teamB is list
-          && request.resource.data.teamA.size() == 2
-          && request.resource.data.teamB.size() == 2
-          && request.resource.data.teamAIds is list
-          && request.resource.data.teamBIds is list
-          && request.resource.data.teamAIds.size() == 2
-          && request.resource.data.teamBIds.size() == 2
-          && request.resource.data.teamAIds.toSet().intersection(request.resource.data.teamBIds.toSet()).size() == 0
-          && request.resource.data.scoreA is int
-          && request.resource.data.scoreB is int
-          && request.resource.data.scoreA >= 0
-          && request.resource.data.scoreB >= 0
-          && request.resource.data.createdBy == request.auth.uid;
-        // Members may correct a round or remove an accidental entry.
-        allow update, delete: if isMember(groupId);
+          && request.resource.data.createdBy == request.auth.uid
+          && validRound(request.resource.data);
+
+        // Existing members can correct round data, but cannot alter metadata.
+        allow update: if isMember(groupId)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'teamA', 'teamB', 'teamAIds', 'teamBIds', 'scoreA', 'scoreB'
+          ])
+          && validRound(request.resource.data);
+        allow delete: if isMember(groupId);
       }
     }
   }
