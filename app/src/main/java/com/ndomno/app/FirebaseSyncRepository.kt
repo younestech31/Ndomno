@@ -127,11 +127,11 @@ class FirebaseSyncRepository(context: Context) {
             })
         }
 
-    suspend fun addPlayer(groupCode: String, name: String): String {
+    suspend fun addPlayer(groupCode: String, name: String, playerId: String = UUID.randomUUID().toString()): String {
         val uid = ensureSignedIn()
         val normalized = name.trim()
         require(normalized.isNotEmpty()) { "Player name cannot be empty." }
-        val id = UUID.randomUUID().toString()
+        val id = playerId
         db.collection("groups").document(groupCode).collection("players")
             .document(id)
             .set(
@@ -149,14 +149,15 @@ class FirebaseSyncRepository(context: Context) {
         teamA: List<String>,
         teamB: List<String>,
         scoreA: Int,
-        scoreB: Int
+        scoreB: Int,
+        matchId: String = UUID.randomUUID().toString()
     ): String {
         val uid = ensureSignedIn()
         require(teamA.size == 2 && teamB.size == 2 && teamA.toSet().intersect(teamB.toSet()).isEmpty()) {
             "A match requires two different players on each team."
         }
         require(scoreA >= 0 && scoreB >= 0) { "Scores cannot be negative." }
-        val id = UUID.randomUUID().toString()
+        val id = matchId
         db.collection("groups").document(groupCode).collection("matches")
             .document(id)
             .set(
