@@ -88,6 +88,56 @@ class FirebaseSyncRepository(context: Context) {
         return code
     }
 
+    /**
+     * Imports a phone's existing data in bounded batches before live listeners are
+     * enabled. Repeated calls are safe because stable document IDs are reused.
+     */
+    suspend fun uploadInitialData(
+        groupCode: String,
+        players: List<Player>,
+        matches: List<PlayedMatch>
+    ) {
+        val uid = ensureSignedIn()
+        val group = db.collection("groups").document(groupCode)
+        val writes = mutableListOf<Pair<com.google.firebase.firestore.DocumentReference, Map<String, Any>>>()
+
+        players.forEach { player ->
+            val name = player.name.trim()
+            require(name.isNotEmpty() && name.length <= 60) {
+                "Player names must contain between 1 and 60 characters."
+            }
+            writes += group.collection("players").document(player.id) to mapOf(
+                "name" to name,
+                "createdBy" to uid,
+                "createdAt" to FieldValue.serverTimestamp()
+            )
+        }
+
+        matches.forEach { match ->
+            validateMatch(match.teamAIds, match.teamBIds, match.scoreA, match.scoreB)
+            require(match.teamA.size == 2 && match.teamB.size == 2) {
+                "Each team must have two player names."
+            }
+            writes += group.collection("matches").document(match.id) to mapOf(
+                "teamA" to match.teamA,
+                "teamB" to match.teamB,
+                "teamAIds" to match.teamAIds,
+                "teamBIds" to match.teamBIds,
+                "scoreA" to match.scoreA,
+                "scoreB" to match.scoreB,
+                "createdBy" to uid,
+                "createdAt" to FieldValue.serverTimestamp()
+            )
+        }
+
+        // Firestore permits at most 500 writes per batch; leave headroom.
+        writes.chunked(400).forEach { chunk ->
+            val batch = db.batch()
+            chunk.forEach { (document, data) -> batch.set(document, data) }
+            batch.commit().await()
+        }
+    }
+
     fun listenPlayers(
         groupCode: String,
         onPlayers: (List<SyncedPlayer>) -> Unit,
@@ -250,8 +300,9 @@ class FirebaseSyncRepository(context: Context) {
     ) {
         require(
             teamAIds.size == 2 && teamBIds.size == 2 &&
+                teamAIds.toSet().size == 2 && teamBIds.toSet().size == 2 &&
                 teamAIds.toSet().intersect(teamBIds.toSet()).isEmpty()
-        ) { "A match requires two different players on each team." }
+        ) { "A match requires four different players split into two teams." }
         require(scoreA >= 0 && scoreB >= 0) { "Scores cannot be negative." }
     }
 
