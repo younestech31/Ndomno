@@ -11,7 +11,6 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.platform.LocalContext
-import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
 import androidx.compose.ui.Modifier
@@ -103,15 +102,20 @@ private fun NdomnoApp() {
                             Spacer(Modifier.width(8.dp))
                             FilterChip(selected = winner == 2, onClick = { winner = 2 }, label = { Text("Team B won") })
                         }
-                        val roundPoints = if (winner == 1) (pipsB1.toIntOrNull() ?: 0) + (pipsB2.toIntOrNull() ?: 0)
-                            else if (winner == 2) (pipsA1.toIntOrNull() ?: 0) + (pipsA2.toIntOrNull() ?: 0) else 0
+                        val calculatedScore = calculateRoundScore(
+                            (pipsA1.toIntOrNull() ?: 0) + (pipsA2.toIntOrNull() ?: 0),
+                            (pipsB1.toIntOrNull() ?: 0) + (pipsB2.toIntOrNull() ?: 0),
+                            winner
+                        )
+                        val roundPoints = if (winner == 1) calculatedScore.first else calculatedScore.second
                         Text("Round points: $roundPoints")
                         Button(onClick = {
                             if (teamA.size == 2 && teamB.size == 2 && winner != 0 &&
                                 listOf(pipsA1, pipsA2, pipsB1, pipsB2).all { (it.toIntOrNull() ?: -1) >= 0 }) {
-                                val a = if (winner == 1) roundPoints else 0
-                                val b = if (winner == 2) roundPoints else 0
-                                matches.add(PlayedMatch(teamA.toList(), teamB.toList(), a, b))
+                                matches.add(PlayedMatch(
+                                    teamA.toList(), teamB.toList(),
+                                    calculatedScore.first, calculatedScore.second
+                                ))
                                 val totalA = matches.filter { it.teamA == teamA && it.teamB == teamB }.sumOf { it.scoreA }
                                 val totalB = matches.filter { it.teamA == teamA && it.teamB == teamB }.sumOf { it.scoreB }
                                 message = "Round saved. Pairing total: $totalA – $totalB"
@@ -203,8 +207,8 @@ private fun loadMatches(preferences: android.content.SharedPreferences): List<Pl
 private fun saveMatches(preferences: android.content.SharedPreferences, matches: List<PlayedMatch>) {
     val json = JSONArray()
     matches.forEach { match ->
-        val teamA = JSONArray().apply { match.teamA.forEach(::put) }
-        val teamB = JSONArray().apply { match.teamB.forEach(::put) }
+        val teamA = JSONArray().apply { match.teamA.forEach { put(it) } }
+        val teamB = JSONArray().apply { match.teamB.forEach { put(it) } }
         json.put(JSONObject()
             .put("teamA", teamA)
             .put("teamB", teamB)
