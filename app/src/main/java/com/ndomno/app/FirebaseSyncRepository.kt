@@ -20,18 +20,17 @@ data class SyncedMatch(
     val id: String,
     val teamA: List<String>,
     val teamB: List<String>,
+    val teamAIds: List<String>,
+    val teamBIds: List<String>,
     val scoreA: Int,
     val scoreB: Int,
     val createdAtMillis: Long = System.currentTimeMillis()
 )
 
 /**
- * Firestore-backed shared game space.
- *
- * Each installation receives a persistent anonymous Firebase identity. A group
- * invite code is also its Firestore document ID, so joining does not require a
- * publicly queryable collection. Firestore's Android SDK provides its own
- * offline cache and queues writes while the device is disconnected.
+ * Firestore-backed shared game space. Player document IDs are stable identifiers
+ * referenced by every new round. Legacy rounds without IDs are still read;
+ * MainActivity resolves their name snapshots against the synchronized players.
  */
 class FirebaseSyncRepository(context: Context) {
     private val app = FirebaseApp.getApps(context).firstOrNull()
@@ -119,23 +118,30 @@ class FirebaseSyncRepository(context: Context) {
                 val scoreA = (doc.get("scoreA") as? Number)?.toInt() ?: return@mapNotNull null
                 val scoreB = (doc.get("scoreB") as? Number)?.toInt() ?: return@mapNotNull null
                 SyncedMatch(
-                    doc.id,
-                    teamA.filterIsInstance<String>(),
-                    teamB.filterIsInstance<String>(),
-                    scoreA,
-                    scoreB,
-                    doc.getTimestamp("createdAt")?.toDate()?.time ?: 0L
+                    id = doc.id,
+                    teamA = teamA.filterIsInstance<String>(),
+                    teamB = teamB.filterIsInstance<String>(),
+                    teamAIds = (doc.get("teamAIds") as? List<*>)?.filterIsInstance<String>().orEmpty(),
+                    teamBIds = (doc.get("teamBIds") as? List<*>)?.filterIsInstance<String>().orEmpty(),
+                    scoreA = scoreA,
+                    scoreB = scoreB,
+                    createdAtMillis = doc.getTimestamp("createdAt")?.toDate()?.time ?: 0L
                 )
             })
         }
 
-    suspend fun addPlayer(groupCode: String, name: String, playerId: String = UUID.randomUUID().toString()): String {
+    suspend fun addPlayer(
+        groupCode: String,
+        name: String,
+        playerId: String = UUID.randomUUID().toString()
+    ): String {
         val uid = ensureSignedIn()
         val normalized = name.trim()
-        require(normalized.isNotEmpty()) { "Player name cannot be empty." }
-        val id = playerId
+        require(normalized.isNotEmpty() && normalized.length <= 60) {
+            "Player names must contain between 1 and 60 characters."
+        }
         db.collection("groups").document(groupCode).collection("players")
-            .document(id)
+            .document(playerId)
             .set(
                 mapOf(
                     "name" to normalized,
@@ -143,22 +149,44 @@ class FirebaseSyncRepository(context: Context) {
                     "createdAt" to FieldValue.serverTimestamp()
                 )
             ).await()
-        return id
+        return playerId
+    }
+
+    suspend fun updatePlayer(groupCode: String, playerId: String, name: String) {
+        ensureSignedIn()
+        val normalized = name.trim()
+        require(normalized.isNotEmpty() && normalized.length <= 60) {
+            "Player names must contain between 1 and 60 characters."
+        }
+        db.collection("groups").document(groupCode).collection("players")
+            .document(playerId)
+            .update("name", normalized)
+            .await()
+    }
+
+    suspend fun deletePlayer(groupCode: String, playerId: String) {
+        ensureSignedIn()
+        db.collection("groups").document(groupCode).collection("players")
+            .document(playerId)
+            .delete()
+            .await()
     }
 
     suspend fun saveMatch(
         groupCode: String,
         teamA: List<String>,
         teamB: List<String>,
+        teamAIds: List<String>,
+        teamBIds: List<String>,
         scoreA: Int,
         scoreB: Int,
         matchId: String = UUID.randomUUID().toString()
     ): String {
         val uid = ensureSignedIn()
-        require(teamA.size == 2 && teamB.size == 2 && teamA.toSet().intersect(teamB.toSet()).isEmpty()) {
-            "A match requires two different players on each team."
+        validateMatch(teamAIds, teamBIds, scoreA, scoreB)
+        require(teamA.size == 2 && teamB.size == 2) {
+            "Each team must have two player names."
         }
-        require(scoreA >= 0 && scoreB >= 0) { "Scores cannot be negative." }
         val id = matchId
         db.collection("groups").document(groupCode).collection("matches")
             .document(id)
@@ -166,6 +194,8 @@ class FirebaseSyncRepository(context: Context) {
                 mapOf(
                     "teamA" to teamA,
                     "teamB" to teamB,
+                    "teamAIds" to teamAIds,
+                    "teamBIds" to teamBIds,
                     "scoreA" to scoreA,
                     "scoreB" to scoreB,
                     "createdBy" to uid,
@@ -173,6 +203,56 @@ class FirebaseSyncRepository(context: Context) {
                 )
             ).await()
         return id
+    }
+
+    suspend fun updateMatch(
+        groupCode: String,
+        matchId: String,
+        teamA: List<String>,
+        teamB: List<String>,
+        teamAIds: List<String>,
+        teamBIds: List<String>,
+        scoreA: Int,
+        scoreB: Int
+    ) {
+        ensureSignedIn()
+        validateMatch(teamAIds, teamBIds, scoreA, scoreB)
+        require(teamA.size == 2 && teamB.size == 2) {
+            "Each team must have two player names."
+        }
+        db.collection("groups").document(groupCode).collection("matches")
+            .document(matchId)
+            .update(
+                mapOf(
+                    "teamA" to teamA,
+                    "teamB" to teamB,
+                    "teamAIds" to teamAIds,
+                    "teamBIds" to teamBIds,
+                    "scoreA" to scoreA,
+                    "scoreB" to scoreB
+                )
+            ).await()
+    }
+
+    suspend fun deleteMatch(groupCode: String, matchId: String) {
+        ensureSignedIn()
+        db.collection("groups").document(groupCode).collection("matches")
+            .document(matchId)
+            .delete()
+            .await()
+    }
+
+    private fun validateMatch(
+        teamAIds: List<String>,
+        teamBIds: List<String>,
+        scoreA: Int,
+        scoreB: Int
+    ) {
+        require(
+            teamAIds.size == 2 && teamBIds.size == 2 &&
+                teamAIds.toSet().intersect(teamBIds.toSet()).isEmpty()
+        ) { "A match requires two different players on each team." }
+        require(scoreA >= 0 && scoreB >= 0) { "Scores cannot be negative." }
     }
 
     private fun newInviteCode(): String {
