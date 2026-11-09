@@ -18,11 +18,17 @@ The Android source includes Firebase Authentication (anonymous sign-in), Cloud F
 
 1. Open the [Firebase Console](https://console.firebase.google.com/) and create a Firebase project.
 2. Add an Android app with package name **com.ndomno.app**.
-3. Download `google-services.json` and place it at **app/google-services.json**. Do not rename the file. It is intentionally excluded from Git.
-4. In Firebase Console → Authentication → Sign-in method, enable **Anonymous**.
-5. Create a **Cloud Firestore** database in production mode.
-6. Deploy this repository's security rules with Firebase CLI: `firebase deploy --only firestore:rules`. Alternatively, paste `firestore.rules` into the Firestore Rules editor and publish.
-7. Build and install the app on both phones. The phone with the existing player list/history should open **Sync → Create group** first. Share the generated code with the other phone; it chooses **Sync → Join** and enters the code.
+3. Download `google-services.json`. For a local Android Studio build, place it at **app/google-services.json**.
+4. For GitHub Actions APK builds, add the entire JSON file as a repository Actions secret:
+   - Open GitHub repository **Settings → Secrets and variables → Actions**.
+   - Choose **New repository secret**.
+   - Set the name to `GOOGLE_SERVICES_JSON`.
+   - Paste the complete contents of `google-services.json` into the secret value and save.
+   - The workflow writes this secret to `app/google-services.json` only during the build. The JSON file itself is not committed to Git.
+5. In Firebase Console → Authentication → Sign-in method (or Sign-in providers), enable **Anonymous**.
+6. Create a **Cloud Firestore** database in production mode.
+7. Deploy this repository's security rules with Firebase CLI: `firebase deploy --only firestore:rules`. Alternatively, paste `firestore.rules` into the Firestore Rules editor and publish.
+8. Build and install the app on both phones. The phone with the existing player list/history should open **Sync → Create group** first. Share the generated code with the other phone; it chooses **Sync → Join** and enters the code.
 
 Both phones must use builds connected to the same Firebase project. Group documents are protected by membership rules; invite codes are the only way to request access. Anonymous device identities are persisted by Firebase on each installation.
 
@@ -35,4 +41,4 @@ Both phones must use builds connected to the same Firebase project. Group docume
 
 ## Android project and build
 
-Open the repository root in Android Studio. Use JDK 17 and Android SDK Platform 35. GitHub Actions runs unit tests and assembles a debug APK. Without `app/google-services.json`, the app still builds in local-only mode and displays Firebase setup instructions in the Sync dialog.
+Open the repository root in Android Studio. Use JDK 17 and Android SDK Platform 35. GitHub Actions runs unit tests and assembles a debug APK. Without the Firebase Actions secret or local `app/google-services.json`, the app still builds in local-only mode and displays Firebase setup instructions in the Sync dialog.
