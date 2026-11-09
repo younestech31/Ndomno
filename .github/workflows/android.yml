@@ -1,0 +1,52 @@
+name: Android build
+
+on:
+  push:
+    branches:
+      - work/android-v1
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-build:
+    name: Unit tests and debug APK
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Restore Android project source
+        shell: bash
+        run: |
+          cat source-parts/*.b64 | base64 --decode > DominoScore-Android-Source.tar.xz
+          tar -xJf DominoScore-Android-Source.tar.xz
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Run unit tests and assemble APK
+        working-directory: domino-score-android
+        shell: bash
+        run: |
+          chmod +x ./gradlew
+          ./gradlew testDebugUnitTest assembleDebug
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: domino-score-debug-apk
+          path: domino-score-android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
