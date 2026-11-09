@@ -40,7 +40,7 @@ dependencies {
     implementation("androidx.room:room-ktx:2.6.1")
 
     // Firebase is activated after app/google-services.json is added.
-    implementation(platform("com.google.firebase:firebase-bom:34.19.0"))
+    implementation(platform("com.google.firebase:firebase-bom:33.14.0"))
     implementation("com.google.firebase:firebase-auth")
     implementation("com.google.firebase:firebase-firestore")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.10.2")
